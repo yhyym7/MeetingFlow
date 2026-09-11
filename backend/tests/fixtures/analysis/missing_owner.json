@@ -1,0 +1,6 @@
+{
+  "summary": "需要安排测试，但没有明确负责人。",
+  "decisions": [],
+  "risks": ["负责人未确定"],
+  "actions": [{"title": "安排测试", "kind": "COMMITTED", "source_quote": "需要安排测试。"}]
+}

@@ -1,0 +1,15 @@
+{
+  "summary": "本轮迭代先确认接口清单，再安排联调。",
+  "decisions": ["先核对接口清单"],
+  "risks": [],
+  "actions": [
+    {
+      "title": "整理接口清单",
+      "kind": "COMMITTED",
+      "owner": {"name": "张三", "department": "技术部"},
+      "collaborators": [{"name": "王五", "department": "产品部"}],
+      "deadline_text": "明天",
+      "source_quote": "张三明天整理接口清单，王五协助核对字段。"
+    }
+  ]
+}
