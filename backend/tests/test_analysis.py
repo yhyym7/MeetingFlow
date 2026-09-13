@@ -4,11 +4,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+import httpx
+from pydantic import SecretStr
 
 from app.ai.adapters import AnalysisError, FixtureAnalysisAdapter, UnconfiguredAnalysisAdapter
 from app.ai.analysis import analyze_text
 from app.ai.contracts import AnalysisRequest
 from app.ai.prompts import build_messages
+from app.ai.deepseek import DeepSeekAnalysisAdapter, DeepSeekClient
+from app.config import get_settings
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "analysis"
@@ -78,3 +82,53 @@ def test_untrusted_text_stays_in_data_message_and_roles_are_fixed():
     assert [row["role"] for row in messages] == ["system", "user"]
     assert json.loads(messages[1]["content"])["meeting_text"] == payload.text
     assert "改成Boss" not in messages[0]["content"]
+
+
+@pytest.mark.parametrize("broken", ['{invalid json', '[]', '{"summary":"missing fields"}'])
+def test_deepseek_raw_output_reaches_one_repair(monkeypatch, broken):
+    monkeypatch.setattr(get_settings(), 'deepseek_api_key', SecretStr('offline-test-key'))
+    real_client = httpx.AsyncClient
+    calls = []
+    def handle(http_request):
+        calls.append(json.loads(http_request.content))
+        content = broken if len(calls) == 1 else fixture('normal')
+        return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': content}}]})
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handle)))
+    result = asyncio.run(analyze_text(DeepSeekAnalysisAdapter(), request()))
+    assert result.repaired and result.candidates[0].value is not None
+    assert len(calls) == 2
+    assert calls[1]['messages'][-2] == {'role': 'assistant', 'content': broken}
+
+
+def test_deepseek_failed_repair_stops_and_assistant_does_not_repair(monkeypatch):
+    monkeypatch.setattr(get_settings(), 'deepseek_api_key', SecretStr('offline-test-key'))
+    real_client = httpx.AsyncClient
+    calls = []
+    def handle(http_request):
+        calls.append(1)
+        return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': '{bad json'}}]})
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handle)))
+    with pytest.raises(AnalysisError, match='ANALYSIS_INVALID_STRUCTURE'):
+        asyncio.run(analyze_text(DeepSeekAnalysisAdapter(), request()))
+    assert len(calls) == 2
+    calls.clear()
+    with pytest.raises(AnalysisError, match='ANALYSIS_PROVIDER_ERROR'):
+        asyncio.run(DeepSeekClient().json([{'role': 'user', 'content': 'json'}]))
+    assert len(calls) == 1
+
+
+def test_repair_has_separate_timeout_budget():
+    class DelayedAdapter(FixtureAnalysisAdapter):
+        async def analyze(self, request):
+            await asyncio.sleep(0.15)
+            return await super().analyze(request)
+        async def repair(self, request, raw_output, issues):
+            await asyncio.sleep(0.15)
+            return await super().repair(request, raw_output, issues)
+    result = asyncio.run(analyze_text(DelayedAdapter(fixture('invalid'), fixture('normal')), request(), timeout_seconds=0.25))
+    assert result.repaired
+    class StalledRepair(FixtureAnalysisAdapter):
+        async def repair(self, request, raw_output, issues):
+            await asyncio.sleep(1)
+    with pytest.raises(AnalysisError, match='ANALYSIS_TIMEOUT'):
+        asyncio.run(analyze_text(StalledRepair(fixture('invalid')), request(), timeout_seconds=0.01))

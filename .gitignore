@@ -14,3 +14,5 @@ storage/
 work/
 *.log
 
+# Local teaching reference, not part of the project deliverable.
+/工业级日志分析 AI Agent 应用开发实训方案.md

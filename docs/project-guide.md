@@ -130,3 +130,10 @@ T02 最初建立 8 张业务表；目前迁移到 `0009`，追加会议输入、
 - 独立空库验证：scripts/verify_clean_database.py，需要当前数据库用户拥有建库权限，仅删除本次随机生成的专用临时库；本机已通过，无需普通启动时执行。
 - 真实 Chrome 验证：frontend/scripts/live-model-smoke.mjs，显式付费入口，使用 work/asr-spoken-validation.wav 合成短语音，复用 work/live-validation.json 避免重复问答费用。新环境没有该临时样本时不直接运行。
 - 结果及边界统一见 docs/model-validation.md；完整启动、费用开关及排错见 README。
+
+## 小修入口（2026-09-12）
+
+- ai/deepseek.py：complete 返回受大小限制的原始内容，分析流程校验失败后可修复一次；json 保持助手的严格 JSON 解析，不增加助手付费请求。
+- ai/analysis.py：初次和修复分别最多 60 秒，修复一次后仍无效则标失败，保留现有作业重试规则。
+- ai/prompts.py：已确定要做但未分配人员的事项保留为待办；同一行动内的协助安排不重复拆分。没有增加字符串强制分类或把全部讨论自动变任务。
+- tests/test_analysis.py 新增 5 个参数化后用例；本轮与人员解析、模型错误测试合计 36 项通过，不把旧 168 项全量记录改写成本轮成绩。没有改迁移或前端，未重跑构建及全部浏览器流程。

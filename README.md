@@ -4,7 +4,11 @@
 
 2026-09-11：首版主线已完成，接入 DeepSeek 分析和只读问答、本地 Whisper 转写、本地中文向量检索。支持 Boss、部门负责人和员工，两个业务流程实际使用 LangGraph，数据保存于 MySQL。真实样例结果和限制见 [模型验收记录](docs/model-validation.md)，操作流程见 [试用指南](docs/demo-guide.md)。
 
+2026-09-12 已补一次小修：完善任务提取规则，修复模型格式错误与修复超时处理。相关 36 项离线测试通过，未新增收费调用。直接展示步骤和可用于答辩的解释见 [试用与答辩指南](docs/demo-guide.md)；复核结论见 [问题记录](question.md)。
+
 ## 本机直接运行
+
+答辩材料已整理为 [8 页离线演示](docs/defense/MeetingFlow-答辩演示.html)、[PDF 备用稿](docs/defense/MeetingFlow-答辩备用.pdf) 和 [5 分钟逐页讲稿](docs/defense/逐页讲稿.md)。用 Chrome 打开 HTML，按 F 全屏、方向键翻页；不需要启动系统即可播放。其他操作见 [演示使用说明](docs/defense/使用说明.md)。
 
 本机依赖、数据库迁移、演示账号和两个本地模型均已准备好，无需重复安装。
 
@@ -52,7 +56,7 @@ MEETINGFLOW_ASR_MODE=local
 MEETINGFLOW_EMBEDDING_MODE=local
 ```
 
-- DeepSeek 官方接口负责会议分析和自由问答，密钥变量为 `MEETINGFLOW_DEEPSEEK_API_KEY`。新文本分析通常 1 次请求，结构错误最多额外修复 1 次；普通自由查询通常 1 次，会议内容问答最多 2 次。HTTP 不自动重试，人工重试可能再次计费。
+- DeepSeek 官方接口负责会议分析和自由问答，密钥变量为 `MEETINGFLOW_DEEPSEEK_API_KEY`。新文本分析通常 1 次请求，非法 JSON 或顶层结构错误最多额外修复 1 次，初次与修复分别限时 60 秒；普通自由查询通常 1 次，会议内容问答最多 2 次。HTTP 不自动重试，人工重试可能再次计费。
 - 固定查询按钮、`查找会议：接口清单`、`语义检索：接口资料由谁整理` 不调用收费模型。本地转写和向量计算也不收费，但下载模型需网络。
 - Whisper base 多语言版以 CPU/int8 运行；BGE-small-zh-v1.5 生成本地 512 维向量。模型已存于 `backend/storage/models/`，运行时从本地加载。
 - 关闭收费调用：将分析模式改为 `demo` 并重启后端，此时只接受页面固定分析样例。旧演示浏览器测试还要求 `MEETINGFLOW_ASR_MODE=unconfigured`，可将 Embedding 改为 `keyword` 使用纯关键词模式。
@@ -106,6 +110,8 @@ cd ..\backend
 npm.cmd run build
 npm.cmd run test:smoke
 ```
+
+若受限环境提示系统临时目录无权限，可在 backend 的测试命令末尾加 `--basetemp=..\work\pytest-tmp`；此目录专供 pytest 临时文件使用。普通 PyCharm 环境不一定需要。
 
 后端测试需 MySQL，使用事务回滚；不要与浏览器业务检查同时执行。`test:smoke` 只读，需要前后端和本机 Chrome。`test:business`、`test:admin-assistant`、`test:manager`、`test:knowledge-audio` 用于演示模式，会保留专用演示数据，已加真实模式阻止保护。真实验证脚本 `frontend/scripts/live-model-smoke.mjs` 是显式付费验证入口，依赖本机 `work/asr-spoken-validation.wav`，通常不必重复执行。
 

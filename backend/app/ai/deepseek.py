@@ -10,7 +10,7 @@ from app.config import get_settings
 
 
 class DeepSeekClient:
-    async def json(self, messages: list[dict], *, max_tokens: int = 2000) -> dict:
+    async def complete(self, messages: list[dict], *, max_tokens: int = 2000) -> str:
         settings = get_settings()
         if not settings.deepseek_api_key:
             raise AnalysisError("ANALYSIS_NOT_CONFIGURED")
@@ -36,15 +36,24 @@ class DeepSeekClient:
             content = choice["message"]["content"]
             if not isinstance(content, str) or len(content) > 250000:
                 raise ValueError("invalid content")
-            result = json.loads(content)
-            if not isinstance(result, dict):
-                raise ValueError("expected object")
-            return result
+            # Meeting analysis validates the raw content and may repair it once.
+            return content
         except AnalysisError:
             raise
         except httpx.TimeoutException:
             raise AnalysisError("ANALYSIS_TIMEOUT") from None
         except Exception:
+            raise AnalysisError("ANALYSIS_PROVIDER_ERROR") from None
+
+    async def json(self, messages: list[dict], *, max_tokens: int = 2000) -> dict:
+        content = await self.complete(messages, max_tokens=max_tokens)
+        try:
+            result = json.loads(content)
+            if not isinstance(result, dict):
+                raise ValueError("expected object")
+            return result
+        except ValueError:
+            # Assistant queries still fail without additional paid repair calls.
             raise AnalysisError("ANALYSIS_PROVIDER_ERROR") from None
 
 
@@ -57,9 +66,9 @@ class DeepSeekAnalysisAdapter:
         # Keep the course demo bounded and its inference cost predictable.
         if len(request.text) > 12000:
             raise AnalysisError("ANALYSIS_INPUT_TOO_LONG")
-        return json.dumps(await self.client.json(build_messages(request), max_tokens=3000), ensure_ascii=False)
+        return await self.client.complete(build_messages(request), max_tokens=3000)
 
     async def repair(self, request, raw_output, issues):
         messages = build_messages(request)
         messages += [{"role": "assistant", "content": raw_output}, {"role": "user", "content": issues}]
-        return json.dumps(await self.client.json(messages, max_tokens=3000), ensure_ascii=False)
+        return await self.client.complete(messages, max_tokens=3000)
